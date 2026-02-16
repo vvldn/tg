@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-02-16T00:00:00Z",
+  "pipeline_version": "0.1.0",
+
+  "monument": {
+    "id": "test-monument",
+    "name": "Test Monument",
+    "wikidata_qid": null,
+    "center": { "lat": 0.0, "lng": 0.0 },
+    "city": null,
+    "country": null,
+    "inception": null,
+    "architect": null,
+    "architectural_style": null,
+    "unesco_id": null,
+    "heritage_status": null
+  },
+
+  "overview": {
+    "narration_text": "Welcome to the Test Monument. This is a minimal test fixture used for development and testing. It contains a single spot with basic narration content to verify that the bundle loading and narration streaming pipeline works correctly.",
+    "narration_duration_seconds": 30,
+    "cultural_significance": null,
+    "timeline": [],
+    "figures": []
+  },
+
+  "spots": [
+    {
+      "id": "main-entrance",
+      "name": "Main Entrance",
+      "lat": 0.0,
+      "lng": 0.0,
+      "narration_order": 1,
+      "walking_from_previous": null,
+      "walking_seconds_from_previous": 0,
+      "narration_text": "You are standing at the main entrance of the Test Monument. This is where every tour begins. Take a moment to look around and absorb the atmosphere.",
+      "narration_duration_seconds": 30,
+      "stories": [
+        {
+          "title": "The Founding",
+          "narration_text": "This monument was established as a place of reflection and learning.",
+          "type": "history",
+          "duration_seconds": 15,
+          "sources": ["test"]
+        }
+      ],
+      "architectural_notes": "Simple stone construction.",
+      "visual_anchors": [
+        "stone entrance archway",
+        "iron gate"
+      ],
+      "visitor_context": "Open daily, no tickets required."
+    }
+  ],
+
+  "route": {
+    "total_walking_minutes": 0,
+    "total_narration_minutes": 1,
+    "total_tour_minutes": 1,
+    "spot_order": ["main-entrance"]
+  },
+
+  "sources": {
+    "test": { "url": "https://example.com", "fetched_at": "2026-02-16T00:00:00Z" }
+  },
+
+  "quality": {
+    "confidence": "low",
+    "total_source_words": 100,
+    "total_narration_words": 50,
+    "spots_with_thin_content": [],
+    "unverified_claims": [],
+    "human_reviewed": false
+  }
+}

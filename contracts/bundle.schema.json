@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MonumentBundle",
+  "description": "Self-contained data bundle for a single monument tour. Produced by the onboarding pipeline, consumed by the runtime backend.",
+  "type": "object",
+  "required": ["version", "generated_at", "monument", "overview", "spots", "route", "sources", "quality"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "pipeline_version": { "type": "string" },
+
+    "monument": {
+      "type": "object",
+      "required": ["id", "name", "center"],
+      "properties": {
+        "id":                  { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "name":                { "type": "string" },
+        "wikidata_qid":        { "type": ["string", "null"] },
+        "center":              { "$ref": "#/$defs/LatLng" },
+        "city":                { "type": ["string", "null"] },
+        "country":             { "type": ["string", "null"] },
+        "inception":           { "type": ["string", "null"] },
+        "architect":           { "type": ["string", "null"] },
+        "architectural_style": { "type": ["string", "null"] },
+        "unesco_id":           { "type": ["string", "null"] },
+        "heritage_status":     { "type": ["string", "null"] }
+      }
+    },
+
+    "overview": {
+      "type": "object",
+      "required": ["narration_text", "narration_duration_seconds"],
+      "properties": {
+        "narration_text":             { "type": "string", "minLength": 100 },
+        "narration_duration_seconds": { "type": "integer", "minimum": 30 },
+        "cultural_significance":      { "type": ["string", "null"] },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["year", "event"],
+            "properties": {
+              "year":        { "type": "string" },
+              "event":       { "type": "string" },
+              "description": { "type": "string" },
+              "source":      { "type": "string" }
+            }
+          }
+        },
+        "figures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "role"],
+            "properties": {
+              "name":        { "type": "string" },
+              "role":        { "type": "string" },
+              "description": { "type": "string" },
+              "source":      { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "spots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Spot" }
+    },
+
+    "route": {
+      "type": "object",
+      "required": ["spot_order"],
+      "properties": {
+        "total_walking_minutes":   { "type": "number" },
+        "total_narration_minutes": { "type": "number" },
+        "total_tour_minutes":      { "type": "number" },
+        "spot_order":              { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url":        { "type": "string" },
+          "fetched_at": { "type": "string" },
+          "qid":        { "type": "string" }
+        }
+      }
+    },
+
+    "quality": {
+      "type": "object",
+      "properties": {
+        "confidence":              { "type": "string", "enum": ["high", "medium", "low"] },
+        "total_source_words":      { "type": "integer" },
+        "total_narration_words":   { "type": "integer" },
+        "spots_with_thin_content": { "type": "array", "items": { "type": "string" } },
+        "unverified_claims":       { "type": "array", "items": { "type": "string" } },
+        "human_reviewed":          { "type": "boolean" }
+      }
+    }
+  },
+
+  "$defs": {
+    "LatLng": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+    "Story": {
+      "type": "object",
+      "required": ["title", "narration_text", "type"],
+      "properties": {
+        "title":            { "type": "string" },
+        "narration_text":   { "type": "string" },
+        "type":             { "type": "string", "enum": ["history", "architecture", "legend", "anecdote"] },
+        "duration_seconds": { "type": "integer" },
+        "sources":          { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Spot": {
+      "type": "object",
+      "required": ["id", "name", "lat", "lng", "narration_order", "narration_text", "narration_duration_seconds"],
+      "properties": {
+        "id":                            { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "name":                          { "type": "string" },
+        "lat":                           { "type": "number", "minimum": -90, "maximum": 90 },
+        "lng":                           { "type": "number", "minimum": -180, "maximum": 180 },
+        "narration_order":               { "type": "integer", "minimum": 1 },
+        "walking_from_previous":         { "type": ["string", "null"] },
+        "walking_seconds_from_previous": { "type": "integer" },
+        "narration_text":                { "type": "string", "minLength": 50 },
+        "narration_duration_seconds":    { "type": "integer" },
+        "stories":                       { "type": "array", "items": { "$ref": "#/$defs/Story" } },
+        "architectural_notes":           { "type": ["string", "null"] },
+        "visual_anchors":                { "type": "array", "items": { "type": "string" } },
+        "visitor_context":               { "type": ["string", "null"] }
+      }
+    }
+  }
+}

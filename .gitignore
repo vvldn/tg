@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data (raw fetched content and logs — bundles are committed)
+data/raw/
+data/logs/
+
+# React Native
+FE/ios/Pods/
+FE/android/.gradle/
+FE/android/app/build/
+FE/android/build/
+*.hprof
+
+# Temporary
+*.log
+/tmp/
