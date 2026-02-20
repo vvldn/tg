@@ -15,6 +15,10 @@ import sys
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from pipeline.config import DATA_DIR, LOGS_DIR, RAW_DIR, BUNDLES_DIR
 

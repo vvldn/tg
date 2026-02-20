@@ -51,27 +51,39 @@ def dedup_spots(spots: list[DiscoveredSpot], proximity_meters: float = 20.0) -> 
 
     result: list[DiscoveredSpot] = []
     for cluster in clusters:
-        # Pick best name (lowest source priority)
-        best_name_spot = min(cluster, key=lambda s: _SOURCE_NAME_PRIORITY.get(s.source, 99))
-        # Pick best coords (lowest coord priority)
-        best_coord_spot = min(cluster, key=lambda s: _SOURCE_COORD_PRIORITY.get(s.source, 99))
-        # Combine sources
-        sources = "+".join(sorted({s.source for s in cluster}))
-        # Prefer wikidata_qid if any spot in cluster has one
-        qid = next((s.wikidata_qid for s in cluster if s.wikidata_qid), None)
-        # Determine importance: best among cluster
-        importance_order = {"primary": 0, "major": 1, "minor": 2, "transitional": 3}
-        best_importance = min(cluster, key=lambda s: importance_order.get(s.importance, 99))
+        result.append(_merge_cluster(cluster))
 
-        merged_spot = DiscoveredSpot(
-            id=best_name_spot.id,
-            name=best_name_spot.name,
-            lat=best_coord_spot.lat,
-            lng=best_coord_spot.lng,
-            source=sources,
-            wikidata_qid=qid,
-            importance=best_importance.importance,
-        )
-        result.append(merged_spot)
+    # Second pass: merge any spots that ended up with the same slug ID
+    # (e.g., "Barber's tomb" and "Barber's Tomb" at slightly different coords)
+    by_id: dict[str, list[DiscoveredSpot]] = {}
+    for spot in result:
+        by_id.setdefault(spot.id, []).append(spot)
 
-    return result
+    final: list[DiscoveredSpot] = []
+    for spots_with_same_id in by_id.values():
+        if len(spots_with_same_id) == 1:
+            final.append(spots_with_same_id[0])
+        else:
+            final.append(_merge_cluster(spots_with_same_id))
+
+    return final
+
+
+def _merge_cluster(cluster: list[DiscoveredSpot]) -> DiscoveredSpot:
+    """Merge a cluster of nearby/duplicate spots into one."""
+    best_name_spot = min(cluster, key=lambda s: _SOURCE_NAME_PRIORITY.get(s.source, 99))
+    best_coord_spot = min(cluster, key=lambda s: _SOURCE_COORD_PRIORITY.get(s.source, 99))
+    sources = "+".join(sorted({s.source for s in cluster}))
+    qid = next((s.wikidata_qid for s in cluster if s.wikidata_qid), None)
+    importance_order = {"primary": 0, "major": 1, "minor": 2, "transitional": 3}
+    best_importance = min(cluster, key=lambda s: importance_order.get(s.importance, 99))
+
+    return DiscoveredSpot(
+        id=best_name_spot.id,
+        name=best_name_spot.name,
+        lat=best_coord_spot.lat,
+        lng=best_coord_spot.lng,
+        source=sources,
+        wikidata_qid=qid,
+        importance=best_importance.importance,
+    )
