@@ -37,3 +37,9 @@ export function getAllBundles(): MonumentBundle[] {
 export function getBundleCount(): number {
   return bundles.size;
 }
+
+export function getBundleSize(tourId: string): number | undefined {
+  const bundle = bundles.get(tourId);
+  if (!bundle) return undefined;
+  return Buffer.byteLength(JSON.stringify(bundle), "utf-8");
+}

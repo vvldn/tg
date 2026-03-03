@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { getBundle, getAllBundles } from "../tour/bundle-loader.js";
+import { getBundle, getAllBundles, getBundleSize } from "../tour/bundle-loader.js";
 import { findNearest } from "../geo/nearest.js";
 import type {
   NearestTourRequest,
   NearestTourResponse,
   TourDetailResponse,
+  BundleCatalogEntry,
   ApiError,
 } from "../types/bundle.js";
 
@@ -55,6 +56,51 @@ export async function tourRoutes(app: FastifyInstance): Promise<void> {
       };
 
       return reply.send(response);
+    }
+  );
+
+  // --- Bundle Catalog ---
+  app.get("/api/bundles", async (_request, reply) => {
+    const bundles = getAllBundles();
+    const catalog: BundleCatalogEntry[] = bundles.map((b) => ({
+      tour_id: b.monument.id,
+      name: b.monument.name,
+      center: b.monument.center,
+      city: b.monument.city,
+      country: b.monument.country,
+      heritage_status: b.monument.heritage_status,
+      estimated_duration_minutes: b.route.total_tour_minutes,
+      spot_count: b.spots.length,
+      bundle_size_bytes: getBundleSize(b.monument.id) ?? 0,
+      generated_at: b.generated_at,
+    }));
+    return reply.send(catalog);
+  });
+
+  // --- Bundle Download ---
+  app.get<{ Params: { tourId: string } }>(
+    "/api/bundles/:tourId",
+    async (request, reply) => {
+      const { tourId } = request.params;
+      const bundle = getBundle(tourId);
+
+      if (!bundle) {
+        return reply.status(404).send({
+          error: "bundle_not_found",
+          message: `No bundle with id '${tourId}'`,
+        } satisfies ApiError);
+      }
+
+      reply.header("ETag", `"${bundle.generated_at}"`);
+      reply.header("Cache-Control", "public, max-age=3600");
+
+      // Support conditional GET
+      const ifNoneMatch = request.headers["if-none-match"];
+      if (ifNoneMatch === `"${bundle.generated_at}"`) {
+        return reply.status(304).send();
+      }
+
+      return reply.send(bundle);
     }
   );
 

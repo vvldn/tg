@@ -11,47 +11,34 @@ import {
 import {v4 as uuidv4} from 'uuid';
 import Geolocation from '@react-native-community/geolocation';
 import {launchCamera} from 'react-native-image-picker';
-import {USE_MOCK_WS, LOCATION_UPDATE_INTERVAL_MS, INTERRUPT_DEBOUNCE_MS} from '../config';
-import {WebSocketClient} from '../services/WebSocketClient';
-import {MockWebSocket} from '../services/MockWebSocket';
-import type {
-  AppState,
-  TranscriptEntry,
-  NarrationMessage,
-  ResponseMessage,
-  AckInterruptMessage,
-  StopArrivedMessage,
-  TourCompleteMessage,
-  TourStartMessage,
-  ErrorMessage,
-} from '../types';
+import {LOCATION_UPDATE_INTERVAL_MS, INTERRUPT_DEBOUNCE_MS} from '../config';
+import {TourEngine} from '../services/TourEngine';
+import {QuestionService} from '../services/QuestionService';
+import {getBundle} from '../services/BundleStorage';
+import type {TranscriptEntry} from '../types';
 import type {StackScreenProps} from '@react-navigation/stack';
 import type {RootStackParamList} from '../navigation';
 
 type Props = StackScreenProps<RootStackParamList, 'ActiveTour'>;
 
-type WSClient = WebSocketClient | MockWebSocket;
-
 export default function ActiveTourScreen({navigation, route}: Props) {
   const {tourId, tourName} = route.params;
-  const wsRef = useRef<WSClient | null>(null);
+  const engineRef = useRef<TourEngine | null>(null);
+  const questionServiceRef = useRef<QuestionService | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const locationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastInterruptTimeRef = useRef(0);
-  const seqStoppedRef = useRef<number>(0);
 
-  const [tourState, setTourState] = useState<'NARRATING' | 'PROCESSING'>('NARRATING');
+  const [tourState, setTourState] = useState<'LOADING' | 'NARRATING' | 'PROCESSING'>('LOADING');
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentSpot, setCurrentSpot] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Add text to transcript, merging consecutive chunks of the same type and source
   const appendChunk = useCallback(
     (type: 'narration' | 'response', chunk: string, spotId?: string, refId?: string) => {
       setTranscript(prev => {
         const last = prev[prev.length - 1];
         if (last && last.type === type && last.spotId === spotId && last.refInterruptId === refId) {
-          // Append to existing entry
           const updated = [...prev];
           updated[updated.length - 1] = {
             ...last,
@@ -59,7 +46,6 @@ export default function ActiveTourScreen({navigation, route}: Props) {
           };
           return updated;
         }
-        // New entry
         return [
           ...prev,
           {
@@ -75,13 +61,11 @@ export default function ActiveTourScreen({navigation, route}: Props) {
     [],
   );
 
-  // Show a transient toast
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
-  // Debounced interrupt check
   const canInterrupt = useCallback(() => {
     const now = Date.now();
     if (now - lastInterruptTimeRef.current < INTERRUPT_DEBOUNCE_MS) {
@@ -91,70 +75,73 @@ export default function ActiveTourScreen({navigation, route}: Props) {
     return true;
   }, []);
 
-  // Setup WebSocket connection
+  // Initialize local tour engine from cached bundle
   useEffect(() => {
-    const ws: WSClient = USE_MOCK_WS
-      ? new MockWebSocket()
-      : new WebSocketClient(tourId);
-    wsRef.current = ws;
+    let destroyed = false;
 
-    ws.on('tour_start', (msg: TourStartMessage) => {
-      if (msg.spots.length > 0) {
-        setCurrentSpot(msg.spots[0].name);
+    async function initTour() {
+      const bundle = await getBundle(tourId);
+      if (destroyed) return;
+
+      if (!bundle) {
+        showToast('Bundle not found. Please go back and try again.');
+        return;
       }
-    });
 
-    ws.on('narration', (msg: NarrationMessage) => {
+      const engine = new TourEngine(bundle);
+      const questionService = new QuestionService(tourId);
+
+      engine.on(event => {
+        if (destroyed) return;
+        switch (event.type) {
+          case 'narration':
+            appendChunk('narration', event.chunk, event.spotId);
+            break;
+          case 'spot_transition':
+            setCurrentSpot(event.spotName);
+            showToast(`Arrived at: ${event.spotName}`);
+            questionService.onSpotTransition();
+            break;
+          case 'tour_complete':
+            engine.destroy();
+            navigation.replace('TourEnded', {summary: event.summary});
+            break;
+          case 'state_change':
+            if (event.state === 'narrating') {
+              setTourState('NARRATING');
+            }
+            break;
+        }
+      });
+
+      engineRef.current = engine;
+      questionServiceRef.current = questionService;
+
+      // Set initial spot name
+      const firstSpot = engine.getCurrentSpot();
+      setCurrentSpot(firstSpot.name);
       setTourState('NARRATING');
-      appendChunk('narration', msg.chunk, msg.spot_id);
-    });
 
-    ws.on('response', (msg: ResponseMessage) => {
-      setTourState('NARRATING');
-      appendChunk('response', msg.chunk, undefined, msg.ref_interrupt_id);
-    });
+      engine.start();
+    }
 
-    ws.on('ack_interrupt', (msg: AckInterruptMessage) => {
-      seqStoppedRef.current = msg.seq_stopped;
-      setTourState('PROCESSING');
-    });
-
-    ws.on('stop_arrived', (msg: StopArrivedMessage) => {
-      setCurrentSpot(msg.name);
-      showToast(`Arrived at: ${msg.name}`);
-    });
-
-    ws.on('tour_complete', (msg: TourCompleteMessage) => {
-      ws.disconnect();
-      navigation.replace('TourEnded', {summary: msg.summary});
-    });
-
-    ws.on('error', (msg: ErrorMessage) => {
-      if (msg.message) {
-        showToast(msg.message);
-      }
-    });
-
-    ws.connect();
+    initTour();
 
     return () => {
-      ws.disconnect();
+      destroyed = true;
+      engineRef.current?.destroy();
     };
   }, [tourId, appendChunk, showToast, navigation]);
 
-  // Location updates
+  // Location updates — feed into local engine
   useEffect(() => {
     locationTimerRef.current = setInterval(() => {
       Geolocation.getCurrentPosition(
         pos => {
-          wsRef.current?.send({
-            type: 'location_update',
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            heading: pos.coords.heading ?? 0,
-            speed: pos.coords.speed ?? 0,
-            accuracy: pos.coords.accuracy ?? 10,
-          });
+          engineRef.current?.onLocationUpdate(
+            pos.coords.latitude,
+            pos.coords.longitude,
+          );
         },
         () => {},
         {enableHighAccuracy: true, timeout: 5000, maximumAge: 5000},
@@ -173,63 +160,70 @@ export default function ActiveTourScreen({navigation, route}: Props) {
     setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 100);
   }, [transcript]);
 
-  // --- Interrupt handlers ---
+  // --- Action handlers ---
 
-  const handleActionInterrupt = useCallback(
-    (action: 'skip' | 'repeat' | 'details') => {
-      if (!canInterrupt()) {
-        return;
-      }
-      setTourState('PROCESSING');
-      wsRef.current?.send({
-        type: 'interrupt:action',
-        id: uuidv4(),
-        action,
-      });
-    },
-    [canInterrupt],
-  );
+  const handleSkip = useCallback(() => {
+    if (!canInterrupt()) return;
+    engineRef.current?.skip();
+  }, [canInterrupt]);
+
+  const handleRepeat = useCallback(() => {
+    if (!canInterrupt()) return;
+    engineRef.current?.repeat();
+  }, [canInterrupt]);
+
+  const handleDetails = useCallback(async () => {
+    if (!canInterrupt()) return;
+    const engine = engineRef.current;
+    const qs = questionServiceRef.current;
+    if (!engine || !qs) return;
+
+    engine.onQuestionStart();
+    setTourState('PROCESSING');
+
+    try {
+      const spot = engine.getCurrentSpot();
+      const answer = await qs.ask(
+        spot.id,
+        `Tell me more about ${spot.name}. Share interesting details, stories, or architectural features that weren't covered in the main narration.`,
+      );
+      appendChunk('response', answer, undefined, uuidv4());
+    } catch {
+      showToast('Could not get details. Check your connection.');
+    }
+
+    setTourState('NARRATING');
+    engine.onQuestionEnd();
+  }, [canInterrupt, appendChunk, showToast]);
 
   const handleCameraInterrupt = useCallback(() => {
-    if (!canInterrupt()) {
-      return;
-    }
+    if (!canInterrupt()) return;
     launchCamera(
       {mediaType: 'photo', quality: 0.7, includeBase64: true},
-      result => {
+      async result => {
         if (result.didCancel || result.errorCode || !result.assets?.[0]?.base64) {
           return;
         }
-        const asset = result.assets[0];
+        const engine = engineRef.current;
+        const qs = questionServiceRef.current;
+        if (!engine || !qs) return;
+
+        engine.onQuestionStart();
         setTourState('PROCESSING');
 
-        Geolocation.getCurrentPosition(
-          pos => {
-            wsRef.current?.send({
-              type: 'interrupt:camera',
-              id: uuidv4(),
-              frame: asset.base64!,
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              heading: pos.coords.heading ?? 0,
-            });
-          },
-          () => {
-            // If GPS fails, send with zeros
-            wsRef.current?.send({
-              type: 'interrupt:camera',
-              id: uuidv4(),
-              frame: asset.base64!,
-              lat: 0,
-              lng: 0,
-              heading: 0,
-            });
-          },
-          {enableHighAccuracy: true, timeout: 5000},
-        );
+        try {
+          const spot = engine.getCurrentSpot();
+          const answer = await qs.askWithImage(spot.id, result.assets[0].base64!);
+          appendChunk('response', answer, undefined, uuidv4());
+        } catch {
+          showToast('Could not analyze image. Check your connection.');
+        }
+
+        setTourState('NARRATING');
+        engine.onQuestionEnd();
       },
     );
-  }, [canInterrupt]);
+  }, [canInterrupt, appendChunk, showToast]);
 
   const handleEndTour = useCallback(() => {
     Alert.alert('End Tour', 'Are you sure you want to end the tour?', [
@@ -238,11 +232,20 @@ export default function ActiveTourScreen({navigation, route}: Props) {
         text: 'End Tour',
         style: 'destructive',
         onPress: () => {
-          wsRef.current?.send({type: 'tour_end'});
+          engineRef.current?.end();
         },
       },
     ]);
   }, []);
+
+  if (tourState === 'LOADING') {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#E8C547" />
+        <Text style={styles.loadingText}>Loading tour...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -298,14 +301,12 @@ export default function ActiveTourScreen({navigation, route}: Props) {
 
       {/* Bottom controls */}
       <View style={styles.controls}>
-        {/* Action buttons row */}
         <View style={styles.actionRow}>
-          <ActionButton label="Skip" onPress={() => handleActionInterrupt('skip')} />
-          <ActionButton label="Repeat" onPress={() => handleActionInterrupt('repeat')} />
-          <ActionButton label="Details" onPress={() => handleActionInterrupt('details')} />
+          <ActionButton label="Skip" onPress={handleSkip} />
+          <ActionButton label="Repeat" onPress={handleRepeat} />
+          <ActionButton label="Details" onPress={handleDetails} />
         </View>
 
-        {/* Main interaction row */}
         <View style={styles.mainRow}>
           <TouchableOpacity
             style={styles.cameraButton}
@@ -337,6 +338,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1A1A2E',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#E8C547',
+    fontSize: 16,
+    marginTop: 12,
   },
   header: {
     flexDirection: 'row',

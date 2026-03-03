@@ -169,6 +169,35 @@ export interface ApiError {
   message: string;
 }
 
+// --- Bundle Catalog API ---
+
+export interface BundleCatalogEntry {
+  tour_id: string;
+  name: string;
+  center: LatLng;
+  city: string | null;
+  country: string | null;
+  heritage_status: string | null;
+  estimated_duration_minutes: number;
+  spot_count: number;
+  bundle_size_bytes: number;
+  generated_at: string;
+}
+
+// --- Q&A API ---
+
+export interface AskRequest {
+  tour_id: string;
+  spot_id: string;
+  question: string;
+  image?: string;
+  conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
+export interface AskResponse {
+  answer: string;
+}
+
 // --- WebSocket Message Types ---
 
 // Client → Server

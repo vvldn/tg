@@ -112,3 +112,26 @@ export async function streamLLMResponse(
 
   return fullResponse;
 }
+
+export async function getLLMResponse(
+  messages: LLMMessage[]
+): Promise<string> {
+  const systemMessage = messages.find((m) => m.role === "system");
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    max_tokens: 1024,
+    system:
+      typeof systemMessage?.content === "string"
+        ? systemMessage.content
+        : "",
+    messages: nonSystemMessages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content as any,
+    })),
+  });
+
+  const block = response.content[0];
+  return block.type === "text" ? block.text : "";
+}

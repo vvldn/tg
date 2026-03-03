@@ -7,7 +7,6 @@ import {
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import {findNearestTour} from '../services/api';
-import {USE_MOCK_WS} from '../config';
 import type {NearestTourResponse} from '../types';
 import type {StackScreenProps} from '@react-navigation/stack';
 import type {RootStackParamList} from '../navigation';
@@ -23,29 +22,6 @@ export default function LocatingScreen({navigation}: Props) {
 
     async function locate() {
       try {
-        if (USE_MOCK_WS) {
-          // In mock mode, skip GPS and use fixture coordinates
-          setStatus('Finding nearby tours...');
-          await new Promise<void>(r => setTimeout(r, 800));
-          if (cancelled) {
-            return;
-          }
-          const mockTour: NearestTourResponse = {
-            tour_id: 'humayuns-tomb',
-            name: "Humayun's Tomb",
-            center: {lat: 28.5933, lng: 77.2508},
-            distance_meters: 142,
-            city: 'New Delhi',
-            country: 'India',
-            heritage_status: 'UNESCO World Heritage Site',
-            estimated_duration_minutes: 38,
-            spot_count: 7,
-            thumbnail_url: null,
-          };
-          navigation.replace('TourReady', {nearestTour: mockTour});
-          return;
-        }
-
         Geolocation.requestAuthorization();
 
         const position = await new Promise<{coords: {latitude: number; longitude: number}}>(

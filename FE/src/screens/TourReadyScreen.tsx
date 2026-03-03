@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import {getTourDetail} from '../services/api';
-import {USE_MOCK_WS} from '../config';
+import {getBundle, downloadBundle} from '../services/BundleStorage';
 import type {NearestTourResponse, TourDetailResponse} from '../types';
 import type {StackScreenProps} from '@react-navigation/stack';
 import type {RootStackParamList} from '../navigation';
@@ -19,52 +19,19 @@ export default function TourReadyScreen({navigation, route}: Props) {
   const {nearestTour} = route.params;
   const [detail, setDetail] = useState<TourDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bundleReady, setBundleReady] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchDetail() {
       try {
-        if (USE_MOCK_WS) {
-          // Mock tour detail
-          await new Promise<void>(r => setTimeout(r, 400));
-          if (cancelled) {
-            return;
-          }
-          setDetail({
-            tour_id: nearestTour.tour_id,
-            name: nearestTour.name,
-            center: nearestTour.center,
-            city: nearestTour.city,
-            country: nearestTour.country,
-            heritage_status: nearestTour.heritage_status,
-            inception: '1572',
-            architect: 'Mirak Mirza Ghiyas',
-            architectural_style: 'Mughal architecture',
-            estimated_duration_minutes: nearestTour.estimated_duration_minutes,
-            spot_count: nearestTour.spot_count,
-            spots_preview: [
-              {id: 'main-gateway', name: 'Main Gateway (West Gate)', order: 1},
-              {id: 'bu-halimas-garden', name: "Bu Halima's Garden", order: 2},
-              {id: 'isa-khans-tomb', name: "Isa Khan's Tomb", order: 3},
-              {id: 'afsarwala-tomb', name: 'Afsarwala Tomb and Mosque', order: 4},
-              {id: 'arab-ki-sarai', name: 'Arab Ki Sarai', order: 5},
-              {id: 'char-bagh', name: 'Char Bagh (Four Gardens)', order: 6},
-              {id: 'main-tomb', name: 'Main Tomb of Humayun', order: 7},
-            ],
-            overview_text:
-              "Humayun's Tomb is one of the finest examples of Mughal architecture...",
-            thumbnail_url: null,
-          });
-          return;
-        }
-
         const data = await getTourDetail(nearestTour.tour_id);
         if (!cancelled) {
           setDetail(data);
         }
       } catch {
-        // Fall back to nearest tour data
         if (!cancelled) {
           setDetail(null);
         }
@@ -75,7 +42,15 @@ export default function TourReadyScreen({navigation, route}: Props) {
       }
     }
 
+    async function checkBundle() {
+      const cached = await getBundle(nearestTour.tour_id);
+      if (!cancelled) {
+        setBundleReady(cached !== null);
+      }
+    }
+
     fetchDetail();
+    checkBundle();
     return () => {
       cancelled = true;
     };
@@ -161,12 +136,33 @@ export default function TourReadyScreen({navigation, route}: Props) {
       {/* Start button */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={styles.startButton}
+          style={[styles.startButton, downloading && styles.startButtonDisabled]}
           activeOpacity={0.8}
-          onPress={() =>
-            navigation.replace('ActiveTour', {tourId: tour.tour_id, tourName: tour.name})
-          }>
-          <Text style={styles.startButtonText}>Start Tour</Text>
+          disabled={downloading}
+          onPress={async () => {
+            if (!bundleReady) {
+              setDownloading(true);
+              try {
+                await downloadBundle(tour.tour_id);
+                setBundleReady(true);
+                navigation.replace('ActiveTour', {tourId: tour.tour_id, tourName: tour.name});
+              } catch {
+                setDownloading(false);
+              }
+            } else {
+              navigation.replace('ActiveTour', {tourId: tour.tour_id, tourName: tour.name});
+            }
+          }}>
+          {downloading ? (
+            <View style={styles.downloadingRow}>
+              <ActivityIndicator size="small" color="#1A1A2E" />
+              <Text style={styles.startButtonText}>Downloading...</Text>
+            </View>
+          ) : (
+            <Text style={styles.startButtonText}>
+              {bundleReady ? 'Start Tour' : 'Download & Start Tour'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -320,5 +316,13 @@ const styles = StyleSheet.create({
     color: '#1A1A2E',
     fontSize: 18,
     fontWeight: '700',
+  },
+  startButtonDisabled: {
+    opacity: 0.7,
+  },
+  downloadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

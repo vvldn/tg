@@ -12,6 +12,7 @@ import fastifyCors from "@fastify/cors";
 import { loadBundles, getBundleCount } from "./tour/bundle-loader.js";
 import { getActiveSessionCount } from "./tour/session.js";
 import { tourRoutes } from "./routes/tour.js";
+import { askRoutes } from "./routes/ask.js";
 import { registerWebSocket } from "./ws/handler.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -36,8 +37,9 @@ async function main(): Promise<void> {
 
   // REST routes
   await app.register(tourRoutes);
+  await app.register(askRoutes);
 
-  // WebSocket routes
+  // WebSocket routes (legacy, kept for backward compat)
   await app.register(registerWebSocket);
 
   // Start server
