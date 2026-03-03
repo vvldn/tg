@@ -5,7 +5,13 @@ import type { ResponseMessage } from "../types/bundle.js";
 import type { TourSession } from "../tour/session.js";
 import { nextSeq } from "../tour/session.js";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) {
+    _client = new Anthropic();
+  }
+  return _client;
+}
 
 function sendJson(ws: WebSocket, data: object): void {
   if (ws.readyState === ws.OPEN) {
@@ -25,7 +31,7 @@ export async function streamLLMResponse(
   let fullResponse = "";
 
   try {
-    const stream = client.messages.stream(
+    const stream = getClient().messages.stream(
       {
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1024,

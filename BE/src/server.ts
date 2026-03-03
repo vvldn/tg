@@ -1,4 +1,11 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Load BE/.env first, then root .env as fallback (won't override existing vars)
+config({ path: resolve(__dirname, "../../.env") });
+config({ path: resolve(__dirname, "../../../.env") });
 import Fastify from "fastify";
 import fastifyWebSocket from "@fastify/websocket";
 import fastifyCors from "@fastify/cors";
